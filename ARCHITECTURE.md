@@ -40,7 +40,7 @@ First-pass design that satisfies REQUIREMENTS.md. Concrete choices below come on
 
 ### Authentication & session
 - Auth subsystem covers player email/password login plus email verification and password reset (FR-1..FR-5), and admin passkey/WebAuthn (FR-6); session and CSRF handling are cross-cutting. Control specifics (password hashing, token hygiene, cookie flags, session lifecycle, anti-CSRF) are owned by SECURITY.md per SR-1, SR-3, SR-4, SR-14, SR-18 — not restated here.
-- Architectural note: `password_hash` is nullable to support passkey-only admin accounts (REQUIREMENTS.md §4.1); player password and admin WebAuthn credentials are modeled as separate records.
+- Architectural note: `password_hash` is nullable to support passkey-only admin accounts (REQUIREMENTS.md §4.1); player password and admin WebAuthn credentials are modeled as separate records. Admin invitation is modeled as a single-use token record (issuer, intended email, authorized role, expiry, consumed-at) whose issuance is audited as `account.invite`; token hygiene and session-id regeneration on auth/privilege-change are session-subsystem behaviors owned by SECURITY.md (SR-3, SR-4, SR-11).
 - ASSUMPTION: a single WebAuthn relying-party library and a session/cookie library will be needed; specific libraries are TO BE DECIDED under the Dependency Rules.
 
 ### Data (MySQL, 3NF)
@@ -53,7 +53,7 @@ First-pass design that satisfies REQUIREMENTS.md. Concrete choices below come on
 - Standings: computed from confirmed + resolved (non-voided) matches only; may be cached/materialized with bounded staleness < 60s (NFR-1, FR-27, BR-4).
 
 ### Cross-cutting
-- Security controls that span all layers — server-side input validation/grammar, output encoding + CSP, TLS with HTTP→HTTPS redirect and HSTS, uniform non-leaking errors, and separation of duties on admin adjudication — are implemented per SR-12, SR-13, SR-15, SR-16, SR-17 (BR-9; operationally ≥2 admins, NFR-5). Control detail is owned by SECURITY.md and not restated here.
+- Security controls that span all layers — server-side input validation/grammar, request-binding field allowlists (mass-assignment guard at the route→service boundary), output encoding + CSP, TLS with HTTP→HTTPS redirect and HSTS, uniform non-leaking errors, and separation of duties on admin adjudication — are implemented per SR-12, SR-19, SR-13, SR-15, SR-16, SR-17 (BR-9; operationally ≥2 admins, NFR-5). Control detail is owned by SECURITY.md and not restated here.
 
 ### Deployment (terraform)
 - Infrastructure provisioned via Terraform. Concrete topology (compute, managed MySQL, secrets, scheduler, TLS/HSTS termination, cache) is TO BE DECIDED; scale target is hundreds of users (single small app tier + one managed DB is a reasonable ASSUMPTION).
@@ -69,7 +69,8 @@ First-pass design that satisfies REQUIREMENTS.md. Concrete choices below come on
 | Architecture component / boundary | Requirement groups | Notes |
 |---|---|---|
 | React SPA + Flask REST API boundary | Section 3 actors; SR-5 deny-by-default | Server is sole authz enforcement point |
-| Auth/session subsystem (player password, admin passkey, tokens) | FR-1..FR-6; SR-1..SR-4, SR-18 | Argon2id; passkey-only admins; invite + seeded first admin |
+| Auth/session subsystem (player password, admin passkey, tokens) | FR-1..FR-6; SR-1..SR-4, SR-18 | Argon2id; passkey-only admins; invite + seeded first admin; session-id regeneration (SR-3); single-use bound invite token (SR-4) |
+| Request-binding / mass-assignment guard | SR-19; FR-1, FR-7, FR-17 | Per-endpoint writable-field allowlist; `role`/`status`/`winner_id`/`confirmation_source` never client-set |
 | Session/CSRF/transport hardening | SR-3, SR-14, SR-15, SR-16 | Cookie flags, anti-CSRF, TLS/HSTS, uniform errors |
 | Authorization layer (object- + function-level, separation of duties) | SR-5, SR-6, SR-7, SR-17; BR-9; NFR-5 | BOLA/IDOR is highest risk; SoD needs ≥2 admins |
 | Profile module | FR-7, FR-8 | Object-level authz; non-trivial display_name |
@@ -81,7 +82,7 @@ First-pass design that satisfies REQUIREMENTS.md. Concrete choices below come on
 | Dispute + admin resolution/void | FR-22..FR-26; SR-7, SR-17; BR-9 | Admin-only queue; SoD enforced |
 | Ranking + standings engine | Section 8; FR-27; BR-4, BR-6 | Derived, total, deterministic ordering |
 | Public scoreboard + history | FR-28, FR-29, FR-30; NFR-1, NFR-3 | Cache/materialize; no private data exposed |
-| Audit log subsystem | Section 4.8; SR-11; BR-8; NFR-4 | Append-only; immutability layer `TO BE DECIDED` |
+| Audit log subsystem | Section 4.8; SR-11; BR-8; NFR-4 | Append-only; score actions + suspend/reactivate/`account.invite`; immutability layer `TO BE DECIDED` |
 | MySQL schema (3NF) + DB constraints | Section 4; C1–C4; SR-9 | C3 technique on MySQL `TO BE DECIDED` |
 | Email subsystem (verification, reset) | FR-2, FR-5; SR-4 | Provider `TO BE DECIDED` |
 | Terraform deployment | Deployment input; NFR-1, NFR-2 | Topology `TO BE DECIDED` |

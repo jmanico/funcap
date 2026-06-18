@@ -1,8 +1,21 @@
 # Funcap Security
 
-Status: Provisional (early-stage). Derived from REQUIREMENTS.md (Section 9 SR-1..SR-18, Section 10 BR-1..BR-10, NFR-3/4/5) and ARCHITECTURE.md. REQUIREMENTS.md is the source of truth; on conflict it wins. Rules are compressed for Claude Code — they are directives, not prose. Every rule traces to an SR/BR/NFR id or an architecture boundary.
+Status: Provisional (early-stage). Derived from REQUIREMENTS.md (Section 9 SR-1..SR-19, Section 10 BR-1..BR-10, NFR-3/4/5) and ARCHITECTURE.md. REQUIREMENTS.md is the source of truth; on conflict it wins. Rules are compressed for Claude Code — they are directives, not prose. Every rule traces to an SR/BR/NFR id or an architecture boundary.
 
 Threat priority for this app: broken object-level authorization (BOLA/IDOR) is the highest risk, because standings derive from match/result/dispute objects (SR-6). Second: business-logic abuse (self-approval, collusion, illegal transitions). Treat both as first-class.
+
+## STRIDE Threat Model
+
+Bootstrap STRIDE threat model (REQ-SEC-001) over the React client ↔ Flask API trust boundary (the API is the sole enforcement point, SR-5) and the app ↔ MySQL / email / WebAuthn boundaries. Each category maps the app-specific threats to the controls that mitigate them. Controls are authored as SR/BR ids in REQUIREMENTS.md §9–§10; this table is the threat-to-control map, not a second source of truth.
+
+| STRIDE category | App-specific threats | Primary controls |
+|---|---|---|
+| Spoofing | Credential stuffing/brute force; session fixation; stolen reset/verify/invite token; admin impersonation | SR-1 (Argon2id), SR-2 (throttling), SR-3 (cookie flags + session-id regeneration), SR-4 (single-use bound tokens), SR-18 (passkey-only admins) |
+| Tampering | Mass-assignment of `role`/`status`/`winner_id`/`confirmation_source`; client-supplied standings; duplicate match per pair; illegal state transition | SR-19 (field allowlist), SR-12 (grammar), FR-20/BR-6 (server-derived winner/standings), SR-9/C3/BR-3 (DB-enforced pairing), SR-10 (transition guard) |
+| Repudiation | Denying a result submission/approval; denying an admin adjudication or admin-invite issuance | SR-11 + §4.8 append-only audit log (score actions + suspend/reactivate/`account.invite`), BR-8 immutability |
+| Information Disclosure | BOLA/IDOR on match/result/dispute objects; account enumeration; PII/email leak on scoreboard; verbose errors | SR-6 (object-level authz), SR-16 (uniform login/register/verify/reset), NFR-3 (email never public), SR-13 (encoding/CSP) |
+| Denial of Service | Auth brute force; proposal/result/enrollment spam; oversized bodies; scoreboard read load | SR-2 (auth + abuse-prone endpoint rate limits, oversized-body rejection), NFR-1 (cached/materialized standings) |
+| Elevation of Privilege | Player → admin via mass assignment or forged invite; self-approval; participant-admin adjudicating own match | SR-19, SR-4 (role-bound invite), SR-5/SR-7 (deny-by-default + function-level), SR-8/BR-5 (submitter≠approver), SR-17/BR-9 (separation of duties) |
 
 ## Required Security Inputs
 
@@ -31,8 +44,8 @@ Inputs still required before these rules are final (TO BE DECIDED):
 ### Authentication & session
 - Player passwords: Argon2id (bcrypt acceptable), salted, memory-hard. Never plaintext or fast/unsalted hashes (SR-1).
 - Admins: WebAuthn passkeys only; no admin password path; invitations issuable only by an existing admin; first admin via seed config, never the app (FR-6, SR-18).
-- Session cookies: `HttpOnly`, `Secure`, `SameSite`; idle + absolute timeout; invalidate on logout and on password change (SR-3).
-- Verification/reset tokens: single-use, time-limited, cryptographically random; invalidate on use (SR-4). Uniform responses — never reveal whether an email is registered (SR-16).
+- Session cookies: `HttpOnly`, `Secure`, `SameSite`; idle + absolute timeout; invalidate on logout and on password change; regenerate the session id on login and on privilege-level change (anti session-fixation) (SR-3).
+- Verification/reset/admin-invitation tokens: single-use, time-limited, cryptographically random, bound to the intended recipient; invalidate on use; an invite grants only its authorized role (SR-4). Uniform responses across login/register/verify/reset — never reveal whether an email is registered (SR-16).
 - All state-changing requests carry an anti-CSRF token (or equivalent) for the cookie session (SR-14).
 
 ### Authorization (highest priority)
@@ -47,6 +60,7 @@ Inputs still required before these rules are final (TO BE DECIDED):
 - Submitter ≠ approver (SR-8, BR-5). Reject illegal state-machine transitions; never silent no-op (SR-10).
 - Enforce one-official-match-per-pair-per-tournament at the DB layer, not only in app code, to survive races (SR-9, BR-3, constraint C3).
 - Confirmed-by-approval and resolved results are immutable to players; auto-confirmed results mutable only via the escalation path until tournament completes (BR-7, BR-10).
+- Mass-assignment guard: bind only an explicit per-endpoint allowlist of client-writable fields. Never accept `role`, `status`, `email_verified_at`, `winner_id`, `confirmation_source`, `approved_by`/`approved_at`, `submitted_by`, `pair_low`/`pair_high`, ids, or timestamps from the request body (SR-19).
 
 ### Output encoding
 - Contextually output-encode user-controlled display fields (`display_name`, `bio`, `location`) wherever rendered; rely on React's default escaping and never use `dangerouslySetInnerHTML` on user data (SR-13).
@@ -57,7 +71,7 @@ Inputs still required before these rules are final (TO BE DECIDED):
 
 ### Logging & error handling
 - Error responses leak no stack traces, internal ids, or account-existence signals; uniform auth/reset responses (SR-16).
-- Audit log is append-only and immutable to all roles; write every score-affecting action (submit/approve/reject/auto-confirm/dispute/resolve/void) with actor, timestamp, before/after state (SR-11, BR-8). System actions use the reserved system actor id.
+- Audit log is append-only and immutable to all roles; write every score-affecting action (submit/approve/reject/auto-confirm/dispute/resolve/void) and security-relevant account action (suspend/reactivate/admin-invite, logged as `account.invite`) with actor, timestamp, before/after state (SR-11, BR-8). System actions use the reserved system actor id.
 - Never log secrets, passwords, tokens, or full session cookies. Log authz denials and admin adjudications for review.
 
 ### Deployment & CI/CD safety
