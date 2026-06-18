@@ -6,12 +6,11 @@ Threat priority for this app: broken object-level authorization (BOLA/IDOR) is t
 
 ## Required Security Inputs
 
-Facts known from REQUIREMENTS.md / ARCHITECTURE.md (do not re-derive):
-- Architecture: React SPA → Flask REST API → MySQL (3NF). API is the sole enforcement point; the client is untrusted (SR-5).
-- Auth model: players = email + password; admins = passkey/WebAuthn only, invite-only, first admin seeded out-of-band (FR-6, SR-1, SR-18). `password_hash` nullable.
-- Sessions: cookie-based, server-issued (SR-3) → CSRF defense required (SR-14).
-- Data: personal data limited to email + optional profile fields; email never shown publicly (NFR-3). Append-only audit log retained for the series lifetime (SR-11, NFR-4).
-- Deployment: Docker image now; Terraform topology TO BE DECIDED (ARCHITECTURE.md).
+Security-salient facts the threat model rests on — authored in REQUIREMENTS.md / ARCHITECTURE.md, referenced here, not re-derived (stack shape and data model live in ARCHITECTURE.md):
+- The Flask API is the sole enforcement point; the React client is untrusted (SR-5).
+- Players authenticate with email + password; admins are passkey/WebAuthn-only, invite-only, first admin seeded out-of-band (FR-6, SR-18). Sessions are cookie-based and server-issued (SR-3), so CSRF defense is required (SR-14).
+- Personal data is minimal and email is never shown publicly (NFR-3); the audit log is append-only and retained for the series lifetime (SR-11, NFR-4).
+- Deployment artifact is a hardened Docker image now; Terraform topology is TO BE DECIDED (ARCHITECTURE.md).
 
 Inputs still required before these rules are final (TO BE DECIDED):
 - Email delivery provider (verification + reset tokens, SR-4) and its secret handling.
