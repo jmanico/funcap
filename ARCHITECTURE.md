@@ -6,9 +6,9 @@ Derived from: REQUIREMENTS.md (Draft v0.2). REQUIREMENTS.md is the source of tru
 ## Required Architecture Inputs
 
 - `Requirements source: REQUIREMENTS.md`
-- `System purpose: A web application for running a recurring series of community tennis tournaments. Players self-register, enroll, find opponents via matchmaking, play, and self-report results; opponents confirm results; a public scoreboard shows standings; admins resolve disputes. Trust is backed by mutual confirmation, an immutable audit log, and an admin dispute backstop.`
-- `Primary use cases: (1) player registration + email verification (FR-1..FR-5); (2) admin tournament creation and lifecycle (FR-9, FR-10); (3) enrollment (FR-11, FR-12); (4) match proposal/accept/decline/cancel/expire (FR-13..FR-16); (5) result submission, opponent approval, auto-confirmation (FR-17..FR-21); (6) dispute raise/escalation and admin resolution/void (FR-22..FR-26); (7) standings computation and public scoreboard, including historical tournaments (FR-27..FR-30).`
-- `Target users / actors: Anonymous visitor, Player, Admin (admin is a superset of player; deny-by-default authorization). See REQUIREMENTS.md Section 3.`
+- `System purpose: see REQUIREMENTS.md §1 (recurring community tennis tournament series; trust backed by mutual confirmation, an immutable audit log, and an admin dispute backstop).`
+- `Primary use cases: player onboarding, tournament lifecycle, enrollment, matchmaking, result entry/confirmation, disputes and admin resolution, standings/scoreboard with history — see REQUIREMENTS.md §5 (FR-1..FR-30).`
+- `Target users / actors: Anonymous visitor, Player, Admin — see REQUIREMENTS.md §3 (admin is a superset of player; deny-by-default authorization).`
 - `Runtime environment: web application`
 - `Server framework: Python Flask, API centric`
 - `Client framework: ReactJS`
@@ -39,9 +39,8 @@ First-pass design that satisfies REQUIREMENTS.md. Concrete choices below come on
 - All privileged actions gated server-side; the client renders capability based on role but never relies on it for security.
 
 ### Authentication & session
-- Players: username/email + password. Passwords hashed with Argon2id (bcrypt acceptable) (SR-1). Email verification and password reset via single-use, time-limited, unpredictable tokens (FR-2, FR-5, SR-4).
-- Admins: passkey / WebAuthn only, no password by default; invite-only; first admin seeded out-of-band at deploy time (FR-6, SR-18). `password_hash` is nullable to support passkey-only accounts (Section 4.1).
-- Sessions: server-issued tokens in `HttpOnly`, `Secure`, `SameSite` cookies, with idle + absolute timeouts, invalidated on logout and password change (SR-3). Anti-CSRF tokens for cookie-based state-changing requests (SR-14).
+- Auth subsystem covers player email/password login plus email verification and password reset (FR-1..FR-5), and admin passkey/WebAuthn (FR-6); session and CSRF handling are cross-cutting. Control specifics (password hashing, token hygiene, cookie flags, session lifecycle, anti-CSRF) are owned by SECURITY.md per SR-1, SR-3, SR-4, SR-14, SR-18 — not restated here.
+- Architectural note: `password_hash` is nullable to support passkey-only admin accounts (REQUIREMENTS.md §4.1); player password and admin WebAuthn credentials are modeled as separate records.
 - ASSUMPTION: a single WebAuthn relying-party library and a session/cookie library will be needed; specific libraries are TO BE DECIDED under the Dependency Rules.
 
 ### Data (MySQL, 3NF)
@@ -54,9 +53,7 @@ First-pass design that satisfies REQUIREMENTS.md. Concrete choices below come on
 - Standings: computed from confirmed + resolved (non-voided) matches only; may be cached/materialized with bounded staleness < 60s (NFR-1, FR-27, BR-4).
 
 ### Cross-cutting
-- Input validation server-side against allowlist/grammar for scores, NTRP, and status enums (SR-12). Output encoding + CSP for user-controlled display fields to prevent stored XSS (SR-13).
-- TLS everywhere, HTTP→HTTPS redirect, HSTS (SR-15). Uniform error responses, no info leak on auth/reset, no stack traces (SR-16).
-- Separation of duties: acting admin id must differ from both participants for resolve/void/final-score (SR-17, BR-9). Operationally requires ≥2 admins (NFR-5).
+- Security controls that span all layers — server-side input validation/grammar, output encoding + CSP, TLS with HTTP→HTTPS redirect and HSTS, uniform non-leaking errors, and separation of duties on admin adjudication — are implemented per SR-12, SR-13, SR-15, SR-16, SR-17 (BR-9; operationally ≥2 admins, NFR-5). Control detail is owned by SECURITY.md and not restated here.
 
 ### Deployment (terraform)
 - Infrastructure provisioned via Terraform. Concrete topology (compute, managed MySQL, secrets, scheduler, TLS/HSTS termination, cache) is TO BE DECIDED; scale target is hundreds of users (single small app tier + one managed DB is a reasonable ASSUMPTION).
