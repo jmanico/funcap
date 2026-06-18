@@ -128,12 +128,12 @@ Append-only. No update or delete by any role.
 
 - `id`
 - `actor_id` (the user id of the actor; for system actions such as expiry and auto-confirmation, a reserved system actor id)
-- `action` (enumerated: `match.propose`, `match.accept`, `match.decline`, `match.cancel`, `match.expire`, `result.submit`, `result.approve`, `result.reject`, `result.auto_confirm`, `result.void`, `dispute.raise`, `dispute.resolve`, `account.suspend`, `account.reactivate`, etc.)
+- `action` (enumerated: `match.propose`, `match.accept`, `match.decline`, `match.cancel`, `match.expire`, `result.submit`, `result.approve`, `result.reject`, `result.auto_confirm`, `result.void`, `dispute.raise`, `dispute.resolve`, `account.suspend`, `account.reactivate`, `account.invite`, etc.)
 - `subject_type`, `subject_id` (the entity acted on)
 - `payload` (before and after state where applicable)
 - `occurred_at`
 
-`result.auto_confirm` is distinct from `result.approve` so an auto-confirmation is always distinguishable from an explicit approval (FR-19). `match.expire` records proposal auto-cancellation (FR-15). Escalation of an auto-confirmed result reuses `dispute.raise`, since it opens a Dispute record.
+`result.auto_confirm` is distinct from `result.approve` so an auto-confirmation is always distinguishable from an explicit approval (FR-19). `match.expire` records proposal auto-cancellation (FR-15). Escalation of an auto-confirmed result reuses `dispute.raise`, since it opens a Dispute record. `account.invite` records issuance of an admin invitation (FR-6, SR-18), making privileged-account provisioning non-repudiable (SR-11).
 
 ## 5. Functional Requirements
 
@@ -144,7 +144,7 @@ Append-only. No update or delete by any role.
 - FR-3: A player must have a verified email before enrolling in a tournament or proposing a match. Profile editing is allowed before verification. Verify: enrollment and match proposal are rejected when `email_verified_at` is null.
 - FR-4: A player can authenticate with email and password and can log out. Verify: logout invalidates the session.
 - FR-5: A player can reset a forgotten password via an emailed, single-use, time-limited token. Verify: the token cannot be reused and expires.
-- FR-6: An admin account is created only by invitation from an existing admin, and authenticates with a passkey (WebAuthn). There is no self-service admin registration and no admin password by default. The first admin is provisioned out-of-band during deployment (seed configuration), not through the application. Verify: a registration attempt that would create an `admin` role without a valid admin invitation is rejected; a non-admin cannot issue an admin invitation; admin authentication uses a registered passkey. Ref: SR-18.
+- FR-6: An admin account is created only by invitation from an existing admin, and authenticates with a passkey (WebAuthn). There is no self-service admin registration and no admin password by default. The first admin is provisioned out-of-band during deployment (seed configuration), not through the application. Verify: a registration attempt that would create an `admin` role without a valid admin invitation is rejected; a non-admin cannot issue an admin invitation; admin authentication uses a registered passkey; the invitation token is single-use and time-limited (SR-4) and its issuance is audited as `account.invite` (SR-11). Ref: SR-18.
 
 ### 5.2 Profile
 
@@ -293,9 +293,9 @@ Security requirements are first-class and testable. They align with OWASP ASVS 5
 ### 9.1 Authentication and Session
 
 - SR-1: Passwords are stored using a memory-hard, salted algorithm (Argon2id preferred, bcrypt acceptable). Plaintext or fast unsalted hashes are prohibited. Applies to player password credentials; admins are passkey-only by default (SR-18). Ref: Password Storage Cheat Sheet.
-- SR-2: Authentication endpoints enforce rate limiting and lockout-resistant throttling to resist credential stuffing and brute force. Ref: Authentication Cheat Sheet.
-- SR-3: Sessions use server-issued tokens delivered in cookies marked `HttpOnly`, `Secure`, and `SameSite`. Sessions have an idle timeout and an absolute timeout, and are invalidated on logout and on password change. Ref: Session Management Cheat Sheet.
-- SR-4: Password reset and email verification tokens are single-use, time-limited, and unpredictable. Ref: Forgot Password Cheat Sheet.
+- SR-2: Authentication endpoints enforce rate limiting and lockout-resistant throttling to resist credential stuffing and brute force. Per-endpoint rate limiting and oversized-body rejection also apply to abuse-prone state-changing endpoints (registration, email send, match proposal, result submission, enrollment) to resist application-layer denial of service and spam (STRIDE: Denial of Service). Ref: Authentication Cheat Sheet, OWASP API Security Top 10 (Unrestricted Resource Consumption).
+- SR-3: Sessions use server-issued tokens delivered in cookies marked `HttpOnly`, `Secure`, and `SameSite`. Sessions have an idle timeout and an absolute timeout, and are invalidated on logout and on password change. The session identifier is regenerated on authentication and on any privilege-level change to prevent session fixation (STRIDE: Spoofing/Elevation of Privilege). Ref: Session Management Cheat Sheet.
+- SR-4: Password reset, email verification, and admin invitation tokens are single-use, time-limited, and cryptographically unpredictable, and are bound to the intended recipient email. An admin invitation token grants only the role its issuing admin authorized and never elevates beyond it (STRIDE: Spoofing/Elevation of Privilege). Ref: Forgot Password Cheat Sheet, Authentication Cheat Sheet.
 
 ### 9.2 Authorization
 
@@ -308,8 +308,9 @@ Security requirements are first-class and testable. They align with OWASP ASVS 5
 - SR-8: The submitter of a result cannot approve it (enforces BR-5). Verify with a test that attempts self-approval and expects a forbidden response.
 - SR-9: The one-official-match-per-pair-per-tournament rule (BR-3) is enforced at the database level via constraint C3, not only in application code, to prevent races and bypass.
 - SR-10: Illegal state-machine transitions (Section 6) are rejected server-side.
-- SR-11: All score-affecting actions (submit, approve, reject, auto-confirm, dispute, resolve, void) are written to the append-only audit log (Section 4.8) with actor, timestamp, and before/after state. The audit log is immutable to all roles.
+- SR-11: All score-affecting actions (submit, approve, reject, auto-confirm, dispute, resolve, void) and security-relevant account actions (account suspend, reactivate, and admin invitation issuance) are written to the append-only audit log (Section 4.8) with actor, timestamp, and before/after state, so privileged actions are non-repudiable (STRIDE: Repudiation). The audit log is immutable to all roles.
 - SR-17: Separation of duties is enforced on admin adjudication. The admin performing a dispute resolution (FR-24), a result void (FR-26), or a final-score setting on a match must not be a participant in that match: the acting admin's id must differ from both `proposer_id` and `opponent_id`. Enforced server-side. Ref: Authorization Cheat Sheet, ASVS access control (separation of duties).
+- SR-19: Every write endpoint binds only an explicit server-side allowlist of client-writable fields (mass-assignment guard). Security-sensitive and server-derived fields are never accepted from the request body — including `role`, `status`, `email_verified_at`, `winner_id`, `confirmation_source`, `approved_by`/`approved_at`, `submitted_by`, `pair_low`/`pair_high`, all entity ids, and all timestamps. Verify: a request carrying a non-allowlisted field (for example `role=admin` on registration, or `status=active`/`winner_id` on a profile or result write) does not set that field and never escalates privilege or alters a derived value (STRIDE: Tampering/Elevation of Privilege). Ref: OWASP API Security Top 10 (Mass Assignment), Authorization Cheat Sheet.
 
 ### 9.4 Input Validation and Output Encoding
 
@@ -320,7 +321,7 @@ Security requirements are first-class and testable. They align with OWASP ASVS 5
 ### 9.5 Transport and Configuration
 
 - SR-15: All traffic is served over TLS; HTTP is redirected to HTTPS and HSTS is set. Ref: Transport Layer Security Cheat Sheet.
-- SR-16: Error responses do not leak stack traces, internal identifiers, or whether an email is registered (uniform responses on auth and reset flows). Ref: Error Handling Cheat Sheet.
+- SR-16: Error responses do not leak stack traces, internal identifiers, or whether an email is registered. Responses are uniform across login, registration, email verification, and password reset so none of these flows reveals account existence (STRIDE: Information Disclosure). Ref: Error Handling Cheat Sheet.
 
 ### 9.6 Admin Account Provisioning
 
