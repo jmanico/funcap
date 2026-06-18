@@ -36,13 +36,15 @@ Funcap is a web + API application: React SPA → Flask REST API → MySQL (3NF).
 - Keep docs compact and high-signal — they are loaded into Claude Code context.
 - Verify before claiming done; report failures honestly.
 
-## Workflow — TO BE DECIDED (placeholders, do not assume)
+## Workflow — resolved conventions
 
-These are not yet defined. Do not invent them; confirm with the maintainer when they become relevant.
+These are now decided (see ARCHITECTURE.md → Selected technology decisions for rationale/versions). Follow them; do not silently deviate.
 
-- Branching & PR policy (branch naming, review gates, merge strategy): TO BE DECIDED.
-- Test framework, runner, and coverage gate (ARCHITECTURE.md targets exist; tooling not chosen): TO BE DECIDED.
-- Lint/format/type-check commands and pre-commit hooks: TO BE DECIDED.
-- CI/CD pipeline (build, scan, deploy) and environments: TO BE DECIDED.
-- Local dev setup / run commands (no app code yet): TO BE DECIDED.
-- Commit message convention: TO BE DECIDED.
+- Branching & PR policy: trunk-based with short-lived branches off `main`; every PR needs 1 approving review + green CI; **squash-merge**.
+- Commit messages: **Conventional Commits** (`feat:`, `fix:`, `docs:`, `chore:`, …).
+- Test framework, runner, coverage gate: backend **pytest** (+`pytest-cov`); frontend **Vitest** + React Testing Library; **≥80% branch coverage** enforced in CI.
+- Lint/format/type-check + pre-commit: backend **Ruff** + **Black**; frontend **ESLint** + **Prettier** + **TypeScript** (strict); all wired via the **`pre-commit`** framework.
+- CI/CD pipeline: **GitHub Actions** — tests + **pip-audit**/**npm audit** (dep CVEs) + **gitleaks** (secrets) on every PR; block on known unpatched CVEs.
+- Local dev setup / run commands: established by the INFRA scaffolding issues (backend app factory, React skeleton, Docker compose for MySQL+Redis); update this line once those land.
+
+Still TO BE DECIDED (do not invent; confirm with the maintainer): concrete email/SMTP provider, key-management/secret-store backend, Terraform topology/hosting/data-region, and GDPR retention-vs-erasure policy.
