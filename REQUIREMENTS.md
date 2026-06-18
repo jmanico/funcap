@@ -6,59 +6,6 @@ Purpose: Authoritative, testable, machine-readable requirements for the Funcap T
 
 ---
 
-## 0. Changes from v0.1
-
-This revision resolves every open decision from the v0.1 Section 13 and closes consistency gaps surfaced while doing so. The resolutions are normative. Section 13 is renamed "Resolved Decisions" and records each decision, its rationale, and the override path if a different product call is preferred.
-
-### 0.1 Resolved decisions
-
-- RD-1 (was OD-1): Tournaments are strictly sequential and non-overlapping. At most one tournament is `active` at any time. Adds constraint C4 and affects FR-10 and FR-28.
-- RD-2 (was OD-2): Ranking is match wins primary, win percentage first tiebreak, as specified in Section 8. This is the one product decision the owner should consciously sign off. Override path documented in Section 13.
-- RD-3 (was OD-3): The third set is a full set with a tiebreak at 6-6. Section 7 grammar is unchanged and applies uniformly to all three sets.
-- RD-4 (was OD-4): "Global" means publicly visible standings for the single active tournament plus frozen historical per-tournament standings. No all-time cross-tournament aggregate leaderboard in v0.2.
-- RD-5 (was OD-5): Unanswered proposals auto-cancel after 14 days; unapproved results auto-confirm after 7 days. Both via distinct audited actions. An auto-confirmed result (confirmed by timeout, not by explicit approval) remains escalatable to admin review until the tournament completes. Adds Result field `confirmation_source` and a guarded `confirmed` to `disputed` transition.
-
-### 0.2 Consistency fixes
-
-- Fixed a duplicate requirement ID. v0.1 used FR-6 twice (admin registration in 5.1 and profile editing in 5.2). The admin-registration requirement retains FR-6. Every functional requirement from the former profile FR-6 onward is shifted by one. The mapping is in Section 0.3. No test suite is locked to v0.1 yet, so renumbering now is non-disruptive; the mapping preserves traceability.
-- Specified the admin-registration requirement (former FR-6 stub): invite-only, passkey authentication, first-admin bootstrap. See FR-6, SR-18, and the note in Section 4.1.
-- Formalized the glossary's "an admin cannot administer their own matches" as a separation-of-duties invariant. See BR-9 and SR-17.
-- Resolved the tension between auto-confirmation (FR-19) and player immutability (FR-21) using `confirmation_source` and an escalation transition. See RD-5, BR-10, Section 6.
-- Added the operational dependency on having at least two admins so separation of duties can always be satisfied. See NFR-5.
-- Grammar and typographic cleanup throughout.
-
-### 0.3 Functional requirement ID mapping (v0.1 to v0.2)
-
-| v0.1 ID | v0.2 ID | Subject |
-|---------|---------|---------|
-| FR-6 (auth, admin registration) | FR-6 | Admin registration (retained) |
-| FR-6 (profile) | FR-7 | View and edit own profile |
-| FR-7 | FR-8 | Display name required |
-| FR-8 | FR-9 | Admin creates tournament |
-| FR-9 | FR-10 | Tournament state transitions |
-| FR-10 | FR-11 | Verified player self-enrolls |
-| FR-11 | FR-12 | Only enrolled players participate |
-| FR-12 | FR-13 | Propose match |
-| FR-13 | FR-14 | Accept or decline proposal |
-| FR-14 | FR-15 | Auto-expire proposal |
-| FR-15 | FR-16 | Cancel match |
-| FR-16 | FR-17 | Submit result |
-| FR-17 | FR-18 | Approve or reject result |
-| FR-18 | FR-19 | Auto-confirm result |
-| FR-19 | FR-20 | Winner derived |
-| FR-20 | FR-21 | Confirmed or resolved immutable to players |
-| FR-21 | FR-22 | Raise dispute or escalate to admin review |
-| FR-22 | FR-23 | Admin views disputes |
-| FR-23 | FR-24 | Admin resolves dispute |
-| FR-24 | FR-25 | Resolved match counts toward standings |
-| FR-25 | FR-26 | Admin voids result, suspends accounts |
-| FR-26 | FR-27 | Compute standings |
-| FR-27 | FR-28 | Public scoreboard |
-| FR-28 | FR-29 | Scoreboard fields |
-| FR-29 | FR-30 | Completed tournaments viewable |
-
----
-
 ## 1. Overview
 
 Funcap is a web application for running a recurring series of community tennis tournaments. Each tournament runs for a fixed three-month window. Players register for free, enroll in a tournament, find opponents through a matchmaking flow, play, and self-report results. Results are confirmed by the opponent. A public scoreboard shows standings. Disputed results are resolved by an admin.
